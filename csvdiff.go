@@ -72,6 +72,13 @@ func parseArgs() *Config {
 		flag.Usage()
 		os.Exit(1)
 	}
+	if *b {
+		fi, e := os.Stdout.Stat()
+		// Disable bold output when stdout is redirected to a file
+		if e == nil && fi.IsRegular() {
+			*b = false
+		}
+	}
 	return &Config{noHeader: *n, separator: (*sep)[0], keys: keys, bold: *b}
 }
 
