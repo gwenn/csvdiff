@@ -5,6 +5,7 @@ package main
 
 import (
 	"bufio"
+	"compress/gzip"
 	"gocsv.googlecode.com/hg"
 	"flag"
 	"fmt"
@@ -87,7 +88,7 @@ func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
 	for _, i := range keys {
 		hasher.Write([]byte(row[i]))
 	}
-	return (RowHash)(hasher.Sum64())
+	return RowHash(hasher.Sum64())
 }
 
 // May be introduce a Formatter
@@ -177,17 +178,19 @@ func searchCache(cache Cache, key RowHash) (row Row, found bool, hash RowHash) {
 func main() {
 	config := parseArgs()
 
+	// TODO Create golang bindings for zlib (gzopen)
 	fileA := open(flag.Arg(0))
 	defer fileA.Close()
+	decompA := decomp(fileA)
+	defer decompA.Close()
 	fileB := open(flag.Arg(1))
 	defer fileB.Close()
-
-	// FIXME "compress/gzip"
-	// FIXME "compress/bzip2"
+	decompB := decomp(fileB)
+	defer decompB.Close()
 
 	// TODO Optimized CSV Reader with only one allocated array/slice by file
-	readerA := makeReader(fileA, config.separator)
-	readerB := makeReader(fileB, config.separator)
+	readerA := makeReader(decompA, config.separator)
+	readerB := makeReader(decompB, config.separator)
 
 	cacheA := make(Cache)
 	cacheB := make(Cache)
@@ -208,15 +211,15 @@ func main() {
 			continue
 		}
 		totalCount++
-		if rowA != nil {
+		if rowA != nil && rowB != nil {
 			hashA = hashRow(hasher, rowA, config.keys)
-		} else {
-			rowA, _, hashA = searchCache(cacheA, hashB)
-		}
-		if rowB != nil {
 			hashB = hashRow(hasher, rowB, config.keys)
-		} else {
+		} else if rowA != nil {
+			hashA = hashRow(hasher, rowA, config.keys)
 			rowB, _, hashB = searchCache(cacheB, hashA)
+		} else if rowB != nil {
+			hashB = hashRow(hasher, rowB, config.keys)
+			rowA, _, hashA = searchCache(cacheA, hashB)
 		}
 
 		if rowA == nil {
@@ -333,4 +336,18 @@ func open(filePath string) *os.File {
 		os.Exit(1)
 	}
 	return file
+}
+
+func decomp(f *os.File) (r io.ReadCloser) {
+	var err os.Error
+	if strings.HasSuffix(f.Name(), ".gz") {
+		r, err = gzip.NewReader(f)
+	} else {
+		r = f
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error while decompressing file: '%s' (%s)\n", f, err)
+		os.Exit(1)
+	}
+	return r
 }
