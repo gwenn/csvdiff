@@ -24,11 +24,11 @@ type RowHash uint64
 type Cache map[RowHash]Row
 
 type Config struct {
-	keys      Keys
+	keys          Keys
 	ignoredFields map[int]bool // TODO Set
-	noHeader  bool
-	separator byte
-	bold  bool
+	noHeader      bool
+	separator     byte
+	format        int
 }
 
 func atouis(s string) (values []uint) {
@@ -48,7 +48,7 @@ func atouis(s string) (values []uint) {
 
 func parseArgs() *Config {
 	var n *bool = flag.Bool("n", false, "No header")
-	var b *bool = flag.Bool("b", false, "Display delta in bold (ansi)")
+	var f *int = flag.Int("f", 0, "Format used to display delta (0: piped, 1: ansi bold, 2: newline)")
 	var sep *string = flag.String("s", ";", "Set the field separator")
 	var k *string = flag.String("k", "", "Set the key indexes (starts at 1)")
 	var i *string = flag.String("i", "", "Set the ignored field indexes (starts at 1)")
@@ -76,23 +76,23 @@ func parseArgs() *Config {
 		keys = atouis(*k)
 	} else {
 		fmt.Fprintf(os.Stderr, "Missing Key argument(s)\n")
-				flag.Usage()
-				os.Exit(1)
-			}
+		flag.Usage()
+		os.Exit(1)
+	}
 	var ignoredFields = make(map[int]bool)
 	if len(*i) > 0 {
 		for _, index := range atouis(*i) {
 			ignoredFields[int(index)] = true
 		}
 	}
-	if *b {
+	if *f == 1 {
 		fi, e := os.Stdout.Stat()
 		// Disable bold output when stdout is redirected to a file
 		if e == nil && fi.IsRegular() {
-			*b = false
+			*f = 0
 		}
 	}
-	return &Config{noHeader: *n, separator: (*sep)[0], keys: keys, ignoredFields: ignoredFields, bold: *b}
+	return &Config{noHeader: *n, separator: (*sep)[0], keys: keys, ignoredFields: ignoredFields, format: *f}
 }
 
 func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
@@ -106,7 +106,7 @@ func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
 // May be introduce a Formatter
 // TODO precision
 // TODO stats on modified fields
-func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool, bold bool) (rowDelta Row, same bool) {
+func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool, format int) (rowDelta Row, same bool) {
 	same = true
 	var minLen, maxLen, longest int
 	if len(rowA) > len(rowB) {
@@ -138,7 +138,7 @@ func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool
 				}
 			}
 			same = false
-			rowDelta[i+1] = concat(rowA[i], rowB[i], bold)
+			rowDelta[i+1] = concat(rowA[i], rowB[i], format)
 			update(modifiedFields, i)
 		} else if !same {
 			rowDelta[i+1] = rowA[i]
@@ -146,10 +146,10 @@ func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool
 	}
 	for i := minLen; i < maxLen; i++ {
 		if longest == 1 {
-			rowDelta[i+1] = concat(rowA[i], "_", bold)
+			rowDelta[i+1] = concat(rowA[i], "_", format)
 			update(modifiedFields, i)
 		} else if longest == 2 {
-			rowDelta[i+1] = concat("_", rowB[i], bold)
+			rowDelta[i+1] = concat("_", rowB[i], format)
 			update(modifiedFields, i)
 		}
 	}
@@ -162,11 +162,14 @@ func update(modifiedFields []bool, i int) {
 	}
 }
 
-func concat(valueA, valueB string, bold bool) string {
-	if bold {
+func concat(valueA, valueB string, format int) string {
+	switch format {
+	case 1:
 		return "\x1b[1m" + valueA + "\x1b[0m|\x1b[1m" + valueB + "\x1b[0m"
+	case 2:
+		return valueA + "\n" + valueB
 	}
-	return valueA + "\n" + valueB
+	return valueA + "|-|" + valueB
 }
 
 func delta(row Row, sign string) (rowDelta Row) {
@@ -246,7 +249,7 @@ func main() {
 		}
 
 		if hashA == hashB {
-			if rowDelta, same = areEquals(rowA, rowB, config.ignoredFields, modifiedFields, config.bold); same {
+			if rowDelta, same = areEquals(rowA, rowB, config.ignoredFields, modifiedFields, config.format); same {
 				if first {
 					first = false
 					if !config.noHeader {
@@ -261,15 +264,15 @@ func main() {
 				modifiedCount++
 				if first {
 					first = false
-					header = make(Row, len(rowDelta) -1)
+					header = make(Row, len(rowDelta)-1)
 					copy(header, rowDelta[1:])
-					modifiedFields = make([]bool, len(rowDelta) - 1)
+					modifiedFields = make([]bool, len(rowDelta)-1)
 				}
 			}
 		} else {
 			altB, found, _ := searchCache(cacheB, hashA)
 			if found {
-				if rowDelta, same = areEquals(rowA, altB, config.ignoredFields, modifiedFields, config.bold); !same {
+				if rowDelta, same = areEquals(rowA, altB, config.ignoredFields, modifiedFields, config.format); !same {
 					writer.WriteRow(rowDelta)
 					modifiedCount++
 				}
@@ -278,7 +281,7 @@ func main() {
 			}
 			altA, found, _ := searchCache(cacheA, hashB)
 			if found {
-				if rowDelta, same = areEquals(altA, rowB, config.ignoredFields, modifiedFields, config.bold); !same {
+				if rowDelta, same = areEquals(altA, rowB, config.ignoredFields, modifiedFields, config.format); !same {
 					writer.WriteRow(rowDelta)
 					modifiedCount++
 				}
@@ -304,7 +307,7 @@ func main() {
 				if header != nil {
 					fmt.Fprintf(os.Stderr, "%s, ", header[i])
 				} else {
-					fmt.Fprintf(os.Stderr, "%d, ", i + 1)
+					fmt.Fprintf(os.Stderr, "%d, ", i+1)
 				}
 			}
 		}
