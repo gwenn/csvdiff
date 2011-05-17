@@ -25,19 +25,35 @@ type Cache map[RowHash]Row
 
 type Config struct {
 	keys      Keys
+	ignoredFields map[int]bool // TODO Set
 	noHeader  bool
 	separator byte
 	bold  bool
 }
 
-// TODO [ignored field(s)]
+func atouis(s string) (values []uint) {
+	rawValues := strings.Split(s, ",", -1)
+	values = make([]uint, len(rawValues))
+	for i, v := range rawValues {
+		f, err := strconv.Atoui(v)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid field index (%v)\n", v)
+			flag.Usage()
+			os.Exit(1)
+		}
+		values[i] = f - 1
+	}
+	return
+}
+
 func parseArgs() *Config {
 	var n *bool = flag.Bool("n", false, "No header")
 	var b *bool = flag.Bool("b", false, "Display delta in bold (ansi)")
 	var sep *string = flag.String("s", ";", "Set the field separator")
 	var k *string = flag.String("k", "", "Set the key indexes (starts at 1)")
+	var i *string = flag.String("i", "", "Set the ignored field indexes (starts at 1)")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [-nb] [-s=C] -k=N[,...] FILEA FILEB\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [-nb] [-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -57,21 +73,17 @@ func parseArgs() *Config {
 	}
 	var keys Keys
 	if len(*k) > 0 {
-		rawKeys := strings.Split(*k, ",", -1)
-		keys = make(Keys, len(rawKeys))
-		for i, s := range rawKeys {
-			f, err := strconv.Atoui(s)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Invalid field index (%v)\n", s)
+		keys = atouis(*k)
+	} else {
+		fmt.Fprintf(os.Stderr, "Missing Key argument(s)\n")
 				flag.Usage()
 				os.Exit(1)
 			}
-			keys[i] = f - 1
+	var ignoredFields = make(map[int]bool)
+	if len(*i) > 0 {
+		for _, index := range atouis(*i) {
+			ignoredFields[int(index)] = true
 		}
-	} else {
-		fmt.Fprintf(os.Stderr, "Missing FILE argument(s)\n")
-		flag.Usage()
-		os.Exit(1)
 	}
 	if *b {
 		fi, e := os.Stdout.Stat()
@@ -80,7 +92,7 @@ func parseArgs() *Config {
 			*b = false
 		}
 	}
-	return &Config{noHeader: *n, separator: (*sep)[0], keys: keys, bold: *b}
+	return &Config{noHeader: *n, separator: (*sep)[0], keys: keys, ignoredFields: ignoredFields, bold: *b}
 }
 
 func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
@@ -92,10 +104,9 @@ func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
 }
 
 // May be introduce a Formatter
-// TODO ignored field(s)
 // TODO precision
 // TODO stats on modified fields
-func areEquals(rowA, rowB Row, modifiedFields []bool, bold bool) (rowDelta Row, same bool) {
+func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool, bold bool) (rowDelta Row, same bool) {
 	same = true
 	var minLen, maxLen, longest int
 	if len(rowA) > len(rowB) {
@@ -116,8 +127,9 @@ func areEquals(rowA, rowB Row, modifiedFields []bool, bold bool) (rowDelta Row, 
 		rowDelta[0] = "#"
 	}
 	for i := 0; i < minLen; i++ {
+		_, ignored := ignoredFields[i]
 		// TODO skip keys
-		if rowA[i] != rowB[i] {
+		if !ignored && rowA[i] != rowB[i] {
 			if same {
 				rowDelta = make(Row, maxLen+1)
 				rowDelta[0] = "#"
@@ -234,7 +246,7 @@ func main() {
 		}
 
 		if hashA == hashB {
-			if rowDelta, same = areEquals(rowA, rowB, modifiedFields, config.bold); same {
+			if rowDelta, same = areEquals(rowA, rowB, config.ignoredFields, modifiedFields, config.bold); same {
 				if first {
 					first = false
 					if !config.noHeader {
@@ -257,7 +269,7 @@ func main() {
 		} else {
 			altB, found, _ := searchCache(cacheB, hashA)
 			if found {
-				if rowDelta, same = areEquals(rowA, altB, modifiedFields, config.bold); !same {
+				if rowDelta, same = areEquals(rowA, altB, config.ignoredFields, modifiedFields, config.bold); !same {
 					writer.WriteRow(rowDelta)
 					modifiedCount++
 				}
@@ -266,8 +278,9 @@ func main() {
 			}
 			altA, found, _ := searchCache(cacheA, hashB)
 			if found {
-				if rowDelta, same = areEquals(altA, rowB, modifiedFields, config.bold); !same {
+				if rowDelta, same = areEquals(altA, rowB, config.ignoredFields, modifiedFields, config.bold); !same {
 					writer.WriteRow(rowDelta)
+					modifiedCount++
 				}
 			} else {
 				cacheB[hashB] = rowB
