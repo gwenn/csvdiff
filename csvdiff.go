@@ -50,10 +50,11 @@ func parseArgs() *Config {
 	var n *bool = flag.Bool("n", false, "No header")
 	var f *int = flag.Int("f", 0, "Format used to display delta (0: piped, 1: ansi bold, 2: newline)")
 	var sep *string = flag.String("s", ";", "Set the field separator")
+	var tab *bool = flag.Bool("t", false, "Set the field separator to TAB")
 	var k *string = flag.String("k", "", "Set the key indexes (starts at 1)")
 	var i *string = flag.String("i", "", "Set the ignored field indexes (starts at 1)")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [-nb] [-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [-n] [-t|-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -66,7 +67,9 @@ func parseArgs() *Config {
 		flag.Usage()
 		os.Exit(1)
 	}
-	if len(*sep) > 1 {
+	if *tab {
+		*sep = "\t"
+	} else if len(*sep) > 1 {
 		fmt.Fprintf(os.Stderr, "Separator must be only one character long\n")
 		flag.Usage()
 		os.Exit(1)
