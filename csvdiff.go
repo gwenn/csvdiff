@@ -48,13 +48,12 @@ func atouis(s string) (values []uint) {
 
 func parseArgs() *Config {
 	var n *bool = flag.Bool("n", false, "No header")
-	var f *int = flag.Int("f", 0, "Format used to display delta (0: piped, 1: ansi bold, 2: newline)")
+	var f *int = flag.Int("f", 0, "Format used to display delta (0: ansi bold, 1: piped, 2: newline)")
 	var sep *string = flag.String("s", ";", "Set the field separator")
-	var tab *bool = flag.Bool("t", false, "Set the field separator to TAB")
 	var k *string = flag.String("k", "", "Set the key indexes (starts at 1)")
 	var i *string = flag.String("i", "", "Set the ignored field indexes (starts at 1)")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [-n] [-t|-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [-n] [-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -67,7 +66,7 @@ func parseArgs() *Config {
 		flag.Usage()
 		os.Exit(1)
 	}
-	if *tab {
+	if *sep == "\\t" {
 		*sep = "\t"
 	} else if len(*sep) > 1 {
 		fmt.Fprintf(os.Stderr, "Separator must be only one character long\n")
@@ -88,11 +87,11 @@ func parseArgs() *Config {
 			ignoredFields[int(index)] = true
 		}
 	}
-	if *f == 1 {
+	if *f == 0 {
 		fi, e := os.Stdout.Stat()
 		// Disable bold output when stdout is redirected to a file
 		if e == nil && fi.IsRegular() {
-			*f = 0
+			*f = 1
 		}
 	}
 	return &Config{noHeader: *n, separator: (*sep)[0], keys: keys, ignoredFields: ignoredFields, format: *f}
@@ -168,11 +167,11 @@ func update(modifiedFields []bool, i int) {
 func concat(valueA, valueB string, format int) string {
 	switch format {
 	case 1:
-		return "\x1b[1m" + valueA + "\x1b[0m|\x1b[1m" + valueB + "\x1b[0m"
+		return valueA + "|-|" + valueB
 	case 2:
 		return valueA + "\n" + valueB
 	}
-	return valueA + "|-|" + valueB
+	return "\x1b[1m" + valueA + "\x1b[0m|\x1b[1m" + valueB + "\x1b[0m"
 }
 
 func delta(row Row, sign string) (rowDelta Row) {
