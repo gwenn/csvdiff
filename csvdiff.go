@@ -135,9 +135,7 @@ func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool
 			if same {
 				rowDelta = make(Row, maxLen+1)
 				rowDelta[0] = "#"
-				for j := 0; j < i; j++ {
-					rowDelta[j+1] = rowA[j]
-				}
+				copy(rowDelta[1:], rowA[0:i])
 			}
 			same = false
 			rowDelta[i+1] = concat(rowA[i], rowB[i], format)
@@ -164,6 +162,7 @@ func update(modifiedFields []bool, i int) {
 	}
 }
 
+// TODO Change '|' by another char when separator is also a '|'...
 func concat(valueA, valueB string, format int) string {
 	switch format {
 	case 1:
@@ -175,11 +174,9 @@ func concat(valueA, valueB string, format int) string {
 }
 
 func delta(row Row, sign string) (rowDelta Row) {
-	rowDelta = make(Row, len(row)+1)
+	rowDelta = make(Row, len(row)+1) // TODO Reuse/cache one array and slice it?
 	rowDelta[0] = sign
-	for i, v := range row {
-		rowDelta[i+1] = v
-	}
+	copy(rowDelta[1:], row)
 	return
 }
 
