@@ -4,6 +4,7 @@ The author disclaims copyright to this source code.
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"flag"
 	"fmt"
@@ -101,7 +102,7 @@ func parseArgs() *Config {
 func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
 	hasher.Reset()
 	for _, i := range keys {
-		hasher.Write([]byte(row[i]))
+		hasher.Write(row[i])
 	}
 	return RowHash(hasher.Sum64())
 }
@@ -127,15 +128,15 @@ func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool
 	}
 	if !same {
 		rowDelta = make(Row, maxLen+1)
-		rowDelta[0] = []byte("#")
+		rowDelta[0] = []byte{'#'}
 	}
 	for i := 0; i < minLen; i++ {
 		_, ignored := ignoredFields[i]
 		// TODO skip keys
-		if !ignored && string(rowA[i]) != string(rowB[i]) {
+		if !ignored && !bytes.Equal(rowA[i], rowB[i]) {
 			if same {
 				rowDelta = make(Row, maxLen+1)
-				rowDelta[0] = []byte("#")
+				rowDelta[0] = []byte{'#'}
 				copy(rowDelta[1:], rowA[0:i])
 			}
 			same = false
@@ -228,7 +229,7 @@ func main() {
 	hasher := fnv.New64a()
 	writer := makeWriter(os.Stdout, config)
 
-	var rowA, rowB, header, rowDelta Row
+	var rowA, rowB, headers, rowDelta Row
 	var hashA, hashB RowHash
 	var addedCount, modifiedCount, removedCount, totalCount uint
 	var eofA, eofB, same bool
@@ -270,8 +271,7 @@ func main() {
 					if !config.noHeader {
 						writer.WriteRow(delta(rowA, '='))
 					}
-					header = make(Row, len(rowA))
-					copy(header, rowA)
+					headers = deepCopy(rowA)
 					modifiedFields = make([]bool, len(rowA))
 				}
 			} else {
@@ -279,8 +279,7 @@ func main() {
 				modifiedCount++
 				if first {
 					first = false
-					header = make(Row, len(rowDelta)-1)
-					copy(header, rowDelta[1:])
+					headers = deepCopy(rowDelta[1:])
 					modifiedFields = make([]bool, len(rowDelta)-1)
 				}
 			}
@@ -292,9 +291,7 @@ func main() {
 					modifiedCount++
 				}
 			} else {
-				dup := make(Row, len(rowA))
-				copy(dup, rowA)
-				cacheA[hashA] = dup
+				cacheA[hashA] = deepCopy(rowA)
 			}
 			altA, found, _ := searchCache(cacheA, hashB)
 			if found {
@@ -303,9 +300,7 @@ func main() {
 					modifiedCount++
 				}
 			} else {
-				dup := make(Row, len(rowB))
-				copy(dup, rowB)
-				cacheB[hashB] = dup
+				cacheB[hashB] = deepCopy(rowB)
 			}
 		}
 	}
@@ -324,8 +319,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Modified fields: ")
 		for i, b := range modifiedFields {
 			if b {
-				if header != nil {
-					fmt.Fprintf(os.Stderr, "%s, ", header[i])
+				if headers != nil {
+					fmt.Fprintf(os.Stderr, "%s, ", headers[i])
 				} else {
 					fmt.Fprintf(os.Stderr, "%d, ", i+1)
 				}
@@ -382,4 +377,13 @@ func decomp(f *os.File) (r io.ReadCloser) {
 		os.Exit(1)
 	}
 	return r
+}
+
+func deepCopy(row Row) Row {
+	dup := make(Row, len(row))
+	for i := 0; i < len(row); i++ {
+		dup[i] = make([]byte, len(row[i]))
+		copy(dup[i], row[i])
+	}
+	return dup
 }
