@@ -4,9 +4,7 @@ The author disclaims copyright to this source code.
 package main
 
 import (
-	"bufio"
 	"compress/gzip"
-	"gocsv.googlecode.com/hg"
 	"flag"
 	"fmt"
 	"hash"
@@ -15,10 +13,11 @@ import (
 	"os"
 	"strings"
 	"strconv"
+	"yacr"
 )
 
 type Keys []uint
-type Row []string
+type Row [][]byte
 type Hasher hash.Hash64
 type RowHash uint64
 type Cache map[RowHash]Row
@@ -27,7 +26,8 @@ type Config struct {
 	keys          Keys
 	ignoredFields map[int]bool // TODO Set
 	noHeader      bool
-	separator     byte
+	sep           byte
+	quoted        bool
 	format        int
 }
 
@@ -49,11 +49,12 @@ func atouis(s string) (values []uint) {
 func parseArgs() *Config {
 	var n *bool = flag.Bool("n", false, "No header")
 	var f *int = flag.Int("f", 0, "Format used to display delta (0: ansi bold, 1: piped, 2: newline)")
-	var sep *string = flag.String("s", ";", "Set the field separator")
+	var q *bool = flag.Bool("q", true, "quoted field mode")
+	var sep *string = flag.String("s", ",", "Set the field separator")
 	var k *string = flag.String("k", "", "Set the key indexes (starts at 1)")
 	var i *string = flag.String("i", "", "Set the ignored field indexes (starts at 1)")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [-n] [-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [-n] [-q] [-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -94,7 +95,7 @@ func parseArgs() *Config {
 			*f = 1
 		}
 	}
-	return &Config{noHeader: *n, separator: (*sep)[0], keys: keys, ignoredFields: ignoredFields, format: *f}
+	return &Config{noHeader: *n, sep: (*sep)[0], quoted: *q, keys: keys, ignoredFields: ignoredFields, format: *f}
 }
 
 func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
@@ -126,15 +127,15 @@ func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool
 	}
 	if !same {
 		rowDelta = make(Row, maxLen+1)
-		rowDelta[0] = "#"
+		rowDelta[0] = []byte("#")
 	}
 	for i := 0; i < minLen; i++ {
 		_, ignored := ignoredFields[i]
 		// TODO skip keys
-		if !ignored && rowA[i] != rowB[i] {
+		if !ignored && string(rowA[i]) != string(rowB[i]) {
 			if same {
 				rowDelta = make(Row, maxLen+1)
-				rowDelta[0] = "#"
+				rowDelta[0] = []byte("#")
 				copy(rowDelta[1:], rowA[0:i])
 			}
 			same = false
@@ -146,10 +147,10 @@ func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool
 	}
 	for i := minLen; i < maxLen; i++ {
 		if longest == 1 {
-			rowDelta[i+1] = concat(rowA[i], "_", format)
+			rowDelta[i+1] = concat(rowA[i], []byte{'_'}, format)
 			update(modifiedFields, i)
 		} else if longest == 2 {
-			rowDelta[i+1] = concat("_", rowB[i], format)
+			rowDelta[i+1] = concat([]byte{'_'}, rowB[i], format)
 			update(modifiedFields, i)
 		}
 	}
@@ -163,19 +164,35 @@ func update(modifiedFields []bool, i int) {
 }
 
 // TODO Change '|' by another char when separator is also a '|'...
-func concat(valueA, valueB string, format int) string {
+func concat(valueA, valueB []byte, format int) []byte {
 	switch format {
 	case 1:
-		return valueA + "|-|" + valueB
+		buf := make([]byte, len(valueA) + 3 + len(valueB))
+		buf = append(buf, valueA...)
+		buf = append(buf, '|', '-', '|')
+		buf = append(buf, valueB...)
+		return buf
 	case 2:
-		return valueA + "\n" + valueB
+		buf := make([]byte, len(valueA) + 1 + len(valueB))
+		buf = append(buf, valueA...)
+		buf = append(buf, '\n')
+		buf = append(buf, valueB...)
+		return buf
 	}
-	return "\x1b[1m" + valueA + "\x1b[0m|\x1b[1m" + valueB + "\x1b[0m"
+	buf := make([]byte, len(valueA) + 17 + len(valueB))
+	buf = append(buf, '\x1b', '[', '1', 'm')
+	buf = append(buf, valueA...)
+	buf = append(buf, '\x1b', '[', '0', 'm')
+	buf = append(buf, '|')
+	buf = append(buf, '\x1b', '[', '1', 'm')
+	buf = append(buf, valueB...)
+	buf = append(buf, '\x1b', '[', '0', 'm')
+	return buf
 }
 
-func delta(row Row, sign string) (rowDelta Row) {
+func delta(row Row, sign byte) (rowDelta Row) {
 	rowDelta = make(Row, len(row)+1) // TODO Reuse/cache one array and slice it?
-	rowDelta[0] = sign
+	rowDelta[0] = []byte{sign}
 	copy(rowDelta[1:], row)
 	return
 }
@@ -202,15 +219,14 @@ func main() {
 	decompB := decomp(fileB)
 	defer decompB.Close()
 
-	// TODO Optimized CSV Reader with only one allocated array/slice by file
-	readerA := makeReader(decompA, config.separator)
-	readerB := makeReader(decompB, config.separator)
+	readerA := makeReader(decompA, config)
+	readerB := makeReader(decompB, config)
 
 	cacheA := make(Cache)
 	cacheB := make(Cache)
 
 	hasher := fnv.New64a()
-	writer := makeWriter(os.Stdout, config.separator)
+	writer := makeWriter(os.Stdout, config)
 
 	var rowA, rowB, header, rowDelta Row
 	var hashA, hashB RowHash
@@ -237,12 +253,12 @@ func main() {
 		}
 
 		if rowA == nil {
-			writer.WriteRow(delta(rowB, "+"))
+			writer.WriteRow(delta(rowB, '+'))
 			addedCount++
 			continue
 		}
 		if rowB == nil {
-			writer.WriteRow(delta(rowA, "-"))
+			writer.WriteRow(delta(rowA, '-'))
 			removedCount++
 			continue
 		}
@@ -252,7 +268,7 @@ func main() {
 				if first {
 					first = false
 					if !config.noHeader {
-						writer.WriteRow(delta(rowA, "="))
+						writer.WriteRow(delta(rowA, '='))
 					}
 					header = make(Row, len(rowA))
 					copy(header, rowA)
@@ -276,7 +292,9 @@ func main() {
 					modifiedCount++
 				}
 			} else {
-				cacheA[hashA] = rowA
+				dup := make(Row, len(rowA))
+				copy(dup, rowA)
+				cacheA[hashA] = dup
 			}
 			altA, found, _ := searchCache(cacheA, hashB)
 			if found {
@@ -285,18 +303,21 @@ func main() {
 					modifiedCount++
 				}
 			} else {
-				cacheB[hashB] = rowB
+				dup := make(Row, len(rowB))
+				copy(dup, rowB)
+				cacheB[hashB] = dup
 			}
 		}
 	}
 	for _, rowA := range cacheA {
-		writer.WriteRow(delta(rowA, "-"))
+		writer.WriteRow(delta(rowA, '-'))
 		removedCount++
 	}
 	for _, rowB := range cacheB {
-		writer.WriteRow(delta(rowB, "+"))
+		writer.WriteRow(delta(rowB, '+'))
 		addedCount++
 	}
+	writer.Flush()
 	if addedCount > 0 || removedCount > 0 || modifiedCount > 0 {
 		fmt.Fprintf(os.Stderr, "Total: %d, Removed: %d, Added: %d, Modified: %d\n",
 			totalCount, removedCount, addedCount, modifiedCount)
@@ -315,7 +336,7 @@ func main() {
 	}
 }
 
-func readRow(r *csv.Reader, pEof bool) (row Row, eof bool) {
+func readRow(r *yacr.Reader, pEof bool) (row Row, eof bool) {
 	if pEof {
 		return nil, pEof
 	}
@@ -331,16 +352,12 @@ func readRow(r *csv.Reader, pEof bool) (row Row, eof bool) {
 	return
 }
 
-func makeReader(rd io.Reader, sep byte) *csv.Reader {
-	bufIn := bufio.NewReader(rd)
-	reader := csv.NewReader(bufIn)
-	reader.Config.FieldDelim = sep
+func makeReader(rd io.Reader, c *Config) *yacr.Reader {
+	reader := yacr.NewReader(rd, c.sep, c.quoted)
 	return reader
 }
-func makeWriter(wr io.Writer, sep byte) *csv.Writer {
-	bufOut := bufio.NewWriter(wr)
-	writer := csv.NewWriter(bufOut)
-	writer.Config.FieldDelim = sep
+func makeWriter(wr io.Writer, c *Config) *yacr.Writer {
+	writer := yacr.NewWriter(wr, c.sep, false/*TODO c.quoted */)
 	return writer
 }
 
