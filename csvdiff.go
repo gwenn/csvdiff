@@ -168,19 +168,19 @@ func update(modifiedFields []bool, i int) {
 func concat(valueA, valueB []byte, format int) []byte {
 	switch format {
 	case 1:
-		buf := make([]byte, len(valueA) + 3 + len(valueB))
+		buf := make([]byte, len(valueA)+3+len(valueB))
 		buf = append(buf, valueA...)
 		buf = append(buf, '|', '-', '|')
 		buf = append(buf, valueB...)
 		return buf
 	case 2:
-		buf := make([]byte, len(valueA) + 1 + len(valueB))
+		buf := make([]byte, len(valueA)+1+len(valueB))
 		buf = append(buf, valueA...)
 		buf = append(buf, '\n')
 		buf = append(buf, valueB...)
 		return buf
 	}
-	buf := make([]byte, len(valueA) + 17 + len(valueB))
+	buf := make([]byte, len(valueA)+17+len(valueB))
 	buf = append(buf, '\x1b', '[', '1', 'm')
 	buf = append(buf, valueA...)
 	buf = append(buf, '\x1b', '[', '0', 'm')
@@ -352,7 +352,7 @@ func makeReader(rd io.Reader, c *Config) *yacr.Reader {
 	return reader
 }
 func makeWriter(wr io.Writer, c *Config) *yacr.Writer {
-	writer := yacr.NewWriter(wr, c.sep, false/*TODO c.quoted */)
+	writer := yacr.NewWriter(wr, c.sep, false /*TODO c.quoted */ )
 	return writer
 }
 
