@@ -12,6 +12,7 @@ import (
 	"hash/fnv"
 	"io"
 	"os"
+	"path"
 	"strings"
 	"strconv"
 	"yacr"
@@ -211,17 +212,13 @@ func main() {
 	config := parseArgs()
 
 	// TODO Create golang bindings for zlib (gzopen)
-	fileA := open(flag.Arg(0))
+	fileA := zopen(flag.Arg(0))
 	defer fileA.Close()
-	decompA := decomp(fileA)
-	defer decompA.Close()
-	fileB := open(flag.Arg(1))
+	fileB := zopen(flag.Arg(1))
 	defer fileB.Close()
-	decompB := decomp(fileB)
-	defer decompB.Close()
 
-	readerA := makeReader(decompA, config)
-	readerB := makeReader(decompB, config)
+	readerA := makeReader(fileA, config)
+	readerB := makeReader(fileB, config)
 
 	cacheA := make(Cache)
 	cacheB := make(Cache)
@@ -356,27 +353,38 @@ func makeWriter(wr io.Writer, c *Config) *yacr.Writer {
 	return writer
 }
 
-func open(filePath string) *os.File {
-	file, err := os.Open(filePath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error while opening file: '%s' (%s)\n", filePath, err)
-		os.Exit(1)
-	}
-	return file
+type ZReadCloser struct {
+	f  *os.File
+	rd io.ReadCloser
 }
 
-func decomp(f *os.File) (r io.ReadCloser) {
-	var err os.Error
-	if strings.HasSuffix(f.Name(), ".gz") {
-		r, err = gzip.NewReader(f)
+func zopen(filepath string) *ZReadCloser {
+	f, err := os.Open(filepath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error while opening file: '%s' (%s)\n", filepath, err)
+		os.Exit(1)
+	}
+	var rd io.ReadCloser
+	if path.Ext(f.Name()) == ".gz" {
+		rd, err = gzip.NewReader(f)
 	} else {
-		r = f
+		rd = f
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error while decompressing file: '%s' (%s)\n", f, err)
 		os.Exit(1)
 	}
-	return r
+	return &ZReadCloser{f, rd}
+}
+func (z *ZReadCloser) Read(b []byte) (n int, err os.Error) {
+	return z.rd.Read(b)
+}
+func (z *ZReadCloser) Close() (err os.Error) {
+	err = z.rd.Close()
+	if err != nil {
+		return
+	}
+	return z.f.Close()
 }
 
 func deepCopy(row Row) Row {
