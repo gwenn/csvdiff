@@ -148,6 +148,9 @@ func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool
 		}
 	}
 	for i := minLen; i < maxLen; i++ {
+		if _, ignored := ignoredFields[i]; ignored {
+			continue
+		}
 		if longest == 1 {
 			rowDelta[i+1] = concat(rowA[i], []byte{'_'}, format)
 			update(modifiedFields, i)
@@ -160,7 +163,7 @@ func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool
 }
 
 func update(modifiedFields []bool, i int) {
-	if modifiedFields != nil {
+	if modifiedFields != nil && i < len(modifiedFields) {
 		modifiedFields[i] = true
 	}
 }
@@ -211,7 +214,7 @@ func searchCache(cache Cache, key RowHash) (row Row, found bool, hash RowHash) {
 func main() {
 	config := parseArgs()
 
-	// TODO Create golang bindings for zlib (gzopen)
+	// TODO Create golang bindings for zlib (gzopen) or libarchive
 	fileA := zopen(flag.Arg(0))
 	defer fileA.Close()
 	fileB := zopen(flag.Arg(1))
@@ -267,8 +270,8 @@ func main() {
 					first = false
 					if !config.noHeader {
 						writer.WriteRow(delta(rowA, '='))
+						headers = deepCopy(rowA)
 					}
-					headers = deepCopy(rowA)
 					modifiedFields = make([]bool, len(rowA))
 				}
 			} else {
@@ -276,7 +279,9 @@ func main() {
 				modifiedCount++
 				if first {
 					first = false
-					headers = deepCopy(rowDelta[1:])
+					if !config.noHeader {
+						headers = deepCopy(rowDelta[1:])
+					}
 					modifiedFields = make([]bool, len(rowDelta)-1)
 				}
 			}
@@ -314,16 +319,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Total: %d, Removed: %d, Added: %d, Modified: %d\n",
 			totalCount, removedCount, addedCount, modifiedCount)
 		fmt.Fprintf(os.Stderr, "Modified fields: ")
+		modified := []string{}
 		for i, b := range modifiedFields {
 			if b {
 				if headers != nil {
-					fmt.Fprintf(os.Stderr, "%s, ", headers[i])
+					modified = append(modified, fmt.Sprintf("%s (%d)", headers[i], i+1))
 				} else {
-					fmt.Fprintf(os.Stderr, "%d, ", i+1)
+					modified = append(modified, fmt.Sprintf("%d", i+1))
 				}
 			}
 		}
-		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "%s\n", strings.Join(modified, ", "))
 		os.Exit(1)
 	}
 }
