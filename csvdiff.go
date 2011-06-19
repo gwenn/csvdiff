@@ -5,14 +5,12 @@ package main
 
 import (
 	"bytes"
-	"compress/gzip"
 	"flag"
 	"fmt"
 	"hash"
 	"hash/fnv"
 	"io"
 	"os"
-	"path"
 	"strings"
 	"strconv"
 	"yacr"
@@ -214,14 +212,10 @@ func searchCache(cache Cache, key RowHash) (row Row, found bool, hash RowHash) {
 func main() {
 	config := parseArgs()
 
-	// TODO Create golang bindings for zlib (gzopen) or libarchive
-	fileA := zopen(flag.Arg(0))
-	defer fileA.Close()
-	fileB := zopen(flag.Arg(1))
-	defer fileB.Close()
-
-	readerA := makeReader(fileA, config)
-	readerB := makeReader(fileB, config)
+	readerA := makeReader(flag.Arg(0), config)
+	defer readerA.Close()
+	readerB := makeReader(flag.Arg(1), config)
+	defer readerB.Close()
 
 	cacheA := make(Cache)
 	cacheB := make(Cache)
@@ -350,47 +344,17 @@ func readRow(r *yacr.Reader, pEof bool) (row Row, eof bool) {
 	return
 }
 
-func makeReader(rd io.Reader, c *Config) *yacr.Reader {
-	reader := yacr.NewReader(rd, c.sep, c.quoted)
+func makeReader(filepath string, c *Config) *yacr.Reader {
+	reader, err := yacr.NewFileReader(filepath, c.sep, c.quoted)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error while opening file: '%s' (%s)\n", filepath, err)
+		os.Exit(1)
+	}
 	return reader
 }
 func makeWriter(wr io.Writer, c *Config) *yacr.Writer {
 	writer := yacr.NewWriter(wr, c.sep, false /*TODO c.quoted */ )
 	return writer
-}
-
-type ZReadCloser struct {
-	f  *os.File
-	rd io.ReadCloser
-}
-
-func zopen(filepath string) *ZReadCloser {
-	f, err := os.Open(filepath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error while opening file: '%s' (%s)\n", filepath, err)
-		os.Exit(1)
-	}
-	var rd io.ReadCloser
-	if path.Ext(f.Name()) == ".gz" {
-		rd, err = gzip.NewReader(f)
-	} else {
-		rd = f
-	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error while decompressing file: '%s' (%s)\n", f, err)
-		os.Exit(1)
-	}
-	return &ZReadCloser{f, rd}
-}
-func (z *ZReadCloser) Read(b []byte) (n int, err os.Error) {
-	return z.rd.Read(b)
-}
-func (z *ZReadCloser) Close() (err os.Error) {
-	err = z.rd.Close()
-	if err != nil {
-		return
-	}
-	return z.f.Close()
 }
 
 func deepCopy(row Row) Row {
