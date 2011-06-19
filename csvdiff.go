@@ -358,10 +358,5 @@ func makeWriter(wr io.Writer, c *Config) *yacr.Writer {
 }
 
 func deepCopy(row Row) Row {
-	dup := make(Row, len(row))
-	for i := 0; i < len(row); i++ {
-		dup[i] = make([]byte, len(row[i]))
-		copy(dup[i], row[i])
-	}
-	return dup
+	return yacr.DeepCopy(row)
 }
