@@ -170,19 +170,11 @@ func update(modifiedFields []bool, i int) {
 func concat(valueA, valueB []byte, format int) []byte {
 	switch format {
 	case 1:
-		buf := make([]byte, len(valueA)+3+len(valueB))
-		buf = append(buf, valueA...)
-		buf = append(buf, '|', '-', '|')
-		buf = append(buf, valueB...)
-		return buf
+		return bytes.Join([][]byte{valueA, valueB}, []byte{'|', '-', '|'})
 	case 2:
-		buf := make([]byte, len(valueA)+1+len(valueB))
-		buf = append(buf, valueA...)
-		buf = append(buf, '\n')
-		buf = append(buf, valueB...)
-		return buf
+		return bytes.Join([][]byte{valueA, valueB}, []byte{'\n'})
 	}
-	buf := make([]byte, len(valueA)+17+len(valueB))
+	buf := []byte{}
 	buf = append(buf, '\x1b', '[', '1', 'm')
 	buf = append(buf, valueA...)
 	buf = append(buf, '\x1b', '[', '0', 'm')
