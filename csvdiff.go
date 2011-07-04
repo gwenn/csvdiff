@@ -29,7 +29,14 @@ type Config struct {
 	sep           byte
 	quoted        bool
 	format        int
+	common        bool
 }
+
+/*
+type Delta struct {
+	values [][]byte
+}
+*/
 
 func atouis(s string) (values []uint) {
 	rawValues := strings.Split(s, ",", -1)
@@ -49,12 +56,13 @@ func atouis(s string) (values []uint) {
 func parseArgs() *Config {
 	var n *bool = flag.Bool("n", false, "No header")
 	var f *int = flag.Int("f", 0, "Format used to display delta (0: ansi bold, 1: piped, 2: newline)")
-	var q *bool = flag.Bool("q", true, "quoted field mode")
+	var q *bool = flag.Bool("q", true, "Quoted field mode")
 	var sep *string = flag.String("s", ",", "Set the field separator")
 	var k *string = flag.String("k", "", "Set the key indexes (starts at 1)")
 	var i *string = flag.String("i", "", "Set the ignored field indexes (starts at 1)")
+	var c *bool = flag.Bool("c", false, "Output common/same lines")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [-n] [-q] [-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [-n] [-q] [-c] [-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -95,7 +103,7 @@ func parseArgs() *Config {
 			*f = 1
 		}
 	}
-	return &Config{noHeader: *n, sep: (*sep)[0], quoted: *q, keys: keys, ignoredFields: ignoredFields, format: *f}
+	return &Config{noHeader: *n, sep: (*sep)[0], quoted: *q, keys: keys, ignoredFields: ignoredFields, format: *f, common: *c}
 }
 
 func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
@@ -108,7 +116,6 @@ func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
 
 // May be introduce a Formatter
 // TODO precision
-// TODO stats on modified fields
 func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool, format int) (rowDelta Row, same bool) {
 	same = true
 	var minLen, maxLen, longest int
@@ -126,7 +133,7 @@ func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool
 		}
 	}
 	if !same {
-		rowDelta = make(Row, maxLen+1)
+		rowDelta = make(Row, maxLen+1) // TODO Reuse/cache one array and slice it?
 		rowDelta[0] = []byte{'#'}
 	}
 	for i := 0; i < minLen; i++ {
@@ -257,8 +264,12 @@ func main() {
 					if !config.noHeader {
 						writer.WriteRow(delta(rowA, '='))
 						headers = deepCopy(rowA)
+					} else if config.common {
+						writer.WriteRow(delta(rowA, '='))
 					}
 					modifiedFields = make([]bool, len(rowA))
+				} else if config.common {
+					writer.WriteRow(delta(rowA, '='))
 				}
 			} else {
 				writer.WriteRow(rowDelta)
@@ -277,6 +288,8 @@ func main() {
 				if rowDelta, same = areEquals(rowA, altB, config.ignoredFields, modifiedFields, config.format); !same {
 					writer.WriteRow(rowDelta)
 					modifiedCount++
+				} else if config.common {
+					writer.WriteRow(delta(rowA, '='))
 				}
 			} else {
 				cacheA[hashA] = deepCopy(rowA)
@@ -286,6 +299,8 @@ func main() {
 				if rowDelta, same = areEquals(altA, rowB, config.ignoredFields, modifiedFields, config.format); !same {
 					writer.WriteRow(rowDelta)
 					modifiedCount++
+				} else if config.common {
+					writer.WriteRow(delta(rowB, '='))
 				}
 			} else {
 				cacheB[hashB] = deepCopy(rowB)
