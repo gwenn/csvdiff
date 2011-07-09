@@ -33,13 +33,14 @@ type Config struct {
 }
 
 /*
+TODO Reduce memory allocation by reusing the same output buffer/row...
 type Delta struct {
 	values [][]byte
 }
 */
 
 func atouis(s string) (values []uint) {
-	rawValues := strings.Split(s, ",", -1)
+	rawValues := strings.Split(s, ",")
 	values = make([]uint, len(rawValues))
 	for i, v := range rawValues {
 		f, err := strconv.Atoui(v)
@@ -53,6 +54,7 @@ func atouis(s string) (values []uint) {
 	return
 }
 
+// TODO Add an option to ignore appended/new field(s).
 func parseArgs() *Config {
 	var n *bool = flag.Bool("n", false, "No header")
 	var f *int = flag.Int("f", 0, "Format used to display delta (0: ansi bold, 1: piped, 2: newline)")
