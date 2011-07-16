@@ -13,7 +13,7 @@ import (
 	"os"
 	"strings"
 	"strconv"
-	"yacr"
+	yacr "github.com/gwenn/yacr"
 )
 
 type Keys []uint
