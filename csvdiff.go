@@ -249,12 +249,12 @@ func main() {
 		}
 
 		if rowA == nil {
-			writer.WriteRow(delta(rowB, '+'))
+			writer.MustWriteRow(delta(rowB, '+'))
 			addedCount++
 			continue
 		}
 		if rowB == nil {
-			writer.WriteRow(delta(rowA, '-'))
+			writer.MustWriteRow(delta(rowA, '-'))
 			removedCount++
 			continue
 		}
@@ -264,17 +264,17 @@ func main() {
 				if first {
 					first = false
 					if !config.noHeader {
-						writer.WriteRow(delta(rowA, '='))
+						writer.MustWriteRow(delta(rowA, '='))
 						headers = deepCopy(rowA)
 					} else if config.common {
-						writer.WriteRow(delta(rowA, '='))
+						writer.MustWriteRow(delta(rowA, '='))
 					}
 					modifiedFields = make([]bool, len(rowA))
 				} else if config.common {
-					writer.WriteRow(delta(rowA, '='))
+					writer.MustWriteRow(delta(rowA, '='))
 				}
 			} else {
-				writer.WriteRow(rowDelta)
+				writer.MustWriteRow(rowDelta)
 				modifiedCount++
 				if first {
 					first = false
@@ -288,10 +288,10 @@ func main() {
 			altB, found, _ := searchCache(cacheB, hashA)
 			if found {
 				if rowDelta, same = areEquals(rowA, altB, config.ignoredFields, modifiedFields, config.format); !same {
-					writer.WriteRow(rowDelta)
+					writer.MustWriteRow(rowDelta)
 					modifiedCount++
 				} else if config.common {
-					writer.WriteRow(delta(rowA, '='))
+					writer.MustWriteRow(delta(rowA, '='))
 				}
 			} else {
 				cacheA[hashA] = deepCopy(rowA)
@@ -299,10 +299,10 @@ func main() {
 			altA, found, _ := searchCache(cacheA, hashB)
 			if found {
 				if rowDelta, same = areEquals(altA, rowB, config.ignoredFields, modifiedFields, config.format); !same {
-					writer.WriteRow(rowDelta)
+					writer.MustWriteRow(rowDelta)
 					modifiedCount++
 				} else if config.common {
-					writer.WriteRow(delta(rowB, '='))
+					writer.MustWriteRow(delta(rowB, '='))
 				}
 			} else {
 				cacheB[hashB] = deepCopy(rowB)
@@ -310,14 +310,14 @@ func main() {
 		}
 	}
 	for _, rowA := range cacheA {
-		writer.WriteRow(delta(rowA, '-'))
+		writer.MustWriteRow(delta(rowA, '-'))
 		removedCount++
 	}
 	for _, rowB := range cacheB {
-		writer.WriteRow(delta(rowB, '+'))
+		writer.MustWriteRow(delta(rowB, '+'))
 		addedCount++
 	}
-	writer.Flush()
+	writer.MustFlush()
 	if addedCount > 0 || removedCount > 0 || modifiedCount > 0 {
 		fmt.Fprintf(os.Stderr, "Total: %d, Removed: %d, Added: %d, Modified: %d\n",
 			totalCount, removedCount, addedCount, modifiedCount)
