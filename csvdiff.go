@@ -10,10 +10,11 @@ import (
 	"hash"
 	"hash/fnv"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"strconv"
-	yacr "github.com/gwenn/yacr"
+	"github.com/gwenn/yacr"
 )
 
 type Keys []uint
@@ -45,9 +46,8 @@ func atouis(s string) (values []uint) {
 	for i, v := range rawValues {
 		f, err := strconv.Atoui(v)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid field index (%v)\n", v)
 			flag.Usage()
-			os.Exit(1)
+			log.Fatalf("Invalid field index (%v)\n", v)
 		}
 		values[i] = f - 1
 	}
@@ -69,28 +69,24 @@ func parseArgs() *Config {
 	}
 	flag.Parse()
 	if flag.NArg() < 2 {
-		fmt.Fprintf(os.Stderr, "Missing FILE argument(s)\n")
 		flag.Usage()
-		os.Exit(1)
+		log.Fatalf("Missing FILE argument(s)\n")
 	} else if flag.NArg() > 2 {
-		fmt.Fprintf(os.Stderr, "Too many FILE arguments\n")
 		flag.Usage()
-		os.Exit(1)
+		log.Fatalf("Too many FILE arguments\n")
 	}
 	if *sep == "\\t" {
 		*sep = "\t"
 	} else if len(*sep) > 1 {
-		fmt.Fprintf(os.Stderr, "Separator must be only one character long\n")
 		flag.Usage()
-		os.Exit(1)
+		log.Fatalf("Separator must be only one character long\n")
 	}
 	var keys Keys
 	if len(*k) > 0 {
 		keys = atouis(*k)
 	} else {
-		fmt.Fprintf(os.Stderr, "Missing Key argument(s)\n")
 		flag.Usage()
-		os.Exit(1)
+		log.Fatalf("Missing Key argument(s)\n")
 	}
 	var ignoredFields = make(map[int]bool)
 	if len(*i) > 0 {
@@ -344,8 +340,7 @@ func readRow(r *yacr.Reader, pEof bool) (row Row, eof bool) {
 	result, e := r.ReadRow()
 	if e != nil {
 		if e != os.EOF {
-			fmt.Fprintf(os.Stderr, "Error while reading file: '%s'\n", e)
-			os.Exit(1)
+			log.Fatalf("Error while reading file: '%s'\n", e)
 		}
 		eof = true
 	}
@@ -356,8 +351,7 @@ func readRow(r *yacr.Reader, pEof bool) (row Row, eof bool) {
 func makeReader(filepath string, c *Config) *yacr.Reader {
 	reader, err := yacr.NewFileReader(filepath, c.sep, c.quoted)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error while opening file: '%s' (%s)\n", filepath, err)
-		os.Exit(1)
+		log.Fatalf("Error while opening file: '%s' (%s)\n", filepath, err)
 	}
 	return reader
 }
