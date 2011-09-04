@@ -28,6 +28,7 @@ type Config struct {
 	ignoredFields map[int]bool // TODO Set
 	noHeader      bool
 	sep           byte
+	guess         bool
 	quoted        bool
 	format        int
 	common        bool
@@ -81,6 +82,13 @@ func parseArgs() *Config {
 		flag.Usage()
 		log.Fatalf("Separator must be only one character long\n")
 	}
+	guess := true
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "s" {
+			guess = false
+		}
+	})
+
 	var keys Keys
 	if len(*k) > 0 {
 		keys = atouis(*k)
@@ -101,7 +109,7 @@ func parseArgs() *Config {
 			*f = 1
 		}
 	}
-	return &Config{noHeader: *n, sep: (*sep)[0], quoted: *q, keys: keys, ignoredFields: ignoredFields, format: *f, common: *c}
+	return &Config{noHeader: *n, sep: (*sep)[0], guess: guess, quoted: *q, keys: keys, ignoredFields: ignoredFields, format: *f, common: *c}
 }
 
 func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
@@ -353,6 +361,7 @@ func makeReader(filepath string, c *Config) *yacr.Reader {
 	if err != nil {
 		log.Fatalf("Error while opening file: '%s' (%s)\n", filepath, err)
 	}
+	reader.Guess = c.guess
 	return reader
 }
 func makeWriter(wr io.Writer, c *Config) *yacr.Writer {
