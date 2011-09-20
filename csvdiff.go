@@ -112,6 +112,19 @@ func parseArgs() *Config {
 	return &Config{noHeader: *n, sep: (*sep)[0], guess: guess, quoted: *q, keys: keys, ignoredFields: ignoredFields, format: *f, common: *c}
 }
 
+func checkRow(rowA, rowB Row, config *Config) {
+	for _, key := range config.keys {
+		if int(key) >= len(rowA) || int(key) >= len(rowB) {
+		  log.Fatalf("Key index %d out of range\n", key + 1)
+		}
+	}
+	for field, _ := range config.ignoredFields {
+		if int(field) >= len(rowA) || int(field) >= len(rowB) {
+		  log.Fatalf("Ignored field %d out of range\n", field + 1)
+		}
+	}
+}
+
 func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
 	hasher.Reset()
 	for _, i := range keys {
@@ -240,6 +253,9 @@ func main() {
 		if rowA == nil && rowB == nil {
 			continue
 		}
+		if first {
+			checkRow(rowA, rowB, config)
+		}
 		totalCount++
 		if rowA != nil && rowB != nil {
 			hashA = hashRow(hasher, rowA, config.keys)
@@ -265,7 +281,7 @@ func main() {
 
 		if hashA == hashB {
 			if rowDelta, same = areEquals(rowA, rowB, config.ignoredFields, modifiedFields, config.format); same {
-				if first {
+				if first { // FIXME, Headers may be different (hashA != hashB)...
 					first = false
 					if !config.noHeader {
 						writer.MustWriteRow(delta(rowA, '='))
@@ -325,18 +341,20 @@ func main() {
 	if addedCount > 0 || removedCount > 0 || modifiedCount > 0 {
 		fmt.Fprintf(os.Stderr, "Total: %d, Removed: %d, Added: %d, Modified: %d\n",
 			totalCount, removedCount, addedCount, modifiedCount)
-		fmt.Fprintf(os.Stderr, "Modified fields: ")
-		modified := []string{}
-		for i, b := range modifiedFields {
-			if b {
-				if headers != nil {
-					modified = append(modified, fmt.Sprintf("%s (%d)", headers[i], i+1))
-				} else {
-					modified = append(modified, fmt.Sprintf("%d", i+1))
+		if modifiedCount > 0 {
+			fmt.Fprintf(os.Stderr, "Modified fields: ")
+			modified := []string{}
+			for i, b := range modifiedFields {
+				if b {
+					if headers != nil {
+						modified = append(modified, fmt.Sprintf("%s (%d)", headers[i], i+1))
+					} else {
+						modified = append(modified, fmt.Sprintf("%d", i+1))
+					}
 				}
 			}
+			fmt.Fprintf(os.Stderr, "%s\n", strings.Join(modified, ", "))
 		}
-		fmt.Fprintf(os.Stderr, "%s\n", strings.Join(modified, ", "))
 		os.Exit(1)
 	}
 }
