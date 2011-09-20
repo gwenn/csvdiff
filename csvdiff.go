@@ -31,6 +31,7 @@ type Config struct {
 	guess         bool
 	quoted        bool
 	format        int
+	symbol        byte
 	common        bool
 }
 
@@ -109,7 +110,14 @@ func parseArgs() *Config {
 			*f = 1
 		}
 	}
-	return &Config{noHeader: *n, sep: (*sep)[0], guess: guess, quoted: *q, keys: keys, ignoredFields: ignoredFields, format: *f, common: *c}
+	var symbol byte
+	if (*sep)[0] == '|' {
+		symbol = '!'
+	} else {
+		symbol = '|'
+	}
+	return &Config{noHeader: *n, sep: (*sep)[0], guess: guess, quoted: *q,
+	keys: keys, ignoredFields: ignoredFields, format: *f, symbol: symbol, common: *c}
 }
 
 func checkRow(rowA, rowB Row, config *Config) {
@@ -135,7 +143,7 @@ func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
 
 // May be introduce a Formatter
 // TODO precision
-func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool, format int) (rowDelta Row, same bool) {
+func areEquals(rowA, rowB Row, config *Config, modifiedFields []bool) (rowDelta Row, same bool) {
 	same = true
 	var minLen, maxLen, longest int
 	if len(rowA) > len(rowB) {
@@ -156,7 +164,7 @@ func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool
 		rowDelta[0] = []byte{'#'}
 	}
 	for i := 0; i < minLen; i++ {
-		_, ignored := ignoredFields[i]
+		_, ignored := config.ignoredFields[i]
 		// TODO skip keys
 		if !ignored && !bytes.Equal(rowA[i], rowB[i]) {
 			if same {
@@ -165,21 +173,21 @@ func areEquals(rowA, rowB Row, ignoredFields map[int]bool, modifiedFields []bool
 				copy(rowDelta[1:], rowA[0:i])
 			}
 			same = false
-			rowDelta[i+1] = concat(rowA[i], rowB[i], format)
+			rowDelta[i+1] = concat(rowA[i], rowB[i], config.format, config.symbol)
 			update(modifiedFields, i)
 		} else if !same {
 			rowDelta[i+1] = rowA[i]
 		}
 	}
 	for i := minLen; i < maxLen; i++ {
-		if _, ignored := ignoredFields[i]; ignored {
+		if _, ignored := config.ignoredFields[i]; ignored {
 			continue
 		}
 		if longest == 1 {
-			rowDelta[i+1] = concat(rowA[i], []byte{'_'}, format)
+			rowDelta[i+1] = concat(rowA[i], []byte{'_'}, config.format, config.symbol)
 			update(modifiedFields, i)
 		} else if longest == 2 {
-			rowDelta[i+1] = concat([]byte{'_'}, rowB[i], format)
+			rowDelta[i+1] = concat([]byte{'_'}, rowB[i], config.format, config.symbol)
 			update(modifiedFields, i)
 		}
 	}
@@ -192,11 +200,10 @@ func update(modifiedFields []bool, i int) {
 	}
 }
 
-// TODO Change '|' by another char when separator is also a '|'...
-func concat(valueA, valueB []byte, format int) []byte {
+func concat(valueA, valueB []byte, format int, symbol byte) []byte {
 	switch format {
 	case 1:
-		return bytes.Join([][]byte{valueA, valueB}, []byte{'|', '-', '|'})
+		return bytes.Join([][]byte{valueA, valueB}, []byte{symbol, '-', symbol})
 	case 2:
 		return bytes.Join([][]byte{valueA, valueB}, []byte{'\n'})
 	}
@@ -204,7 +211,7 @@ func concat(valueA, valueB []byte, format int) []byte {
 	buf = append(buf, '\x1b', '[', '1', 'm')
 	buf = append(buf, valueA...)
 	buf = append(buf, '\x1b', '[', '0', 'm')
-	buf = append(buf, '|')
+	buf = append(buf, symbol)
 	buf = append(buf, '\x1b', '[', '1', 'm')
 	buf = append(buf, valueB...)
 	buf = append(buf, '\x1b', '[', '0', 'm')
@@ -280,7 +287,7 @@ func main() {
 		}
 
 		if hashA == hashB {
-			if rowDelta, same = areEquals(rowA, rowB, config.ignoredFields, modifiedFields, config.format); same {
+			if rowDelta, same = areEquals(rowA, rowB, config, modifiedFields); same {
 				if first { // FIXME, Headers may be different (hashA != hashB)...
 					first = false
 					if !config.noHeader {
@@ -307,7 +314,7 @@ func main() {
 		} else {
 			altB, found, _ := searchCache(cacheB, hashA)
 			if found {
-				if rowDelta, same = areEquals(rowA, altB, config.ignoredFields, modifiedFields, config.format); !same {
+				if rowDelta, same = areEquals(rowA, altB, config, modifiedFields); !same {
 					writer.MustWriteRow(rowDelta)
 					modifiedCount++
 				} else if config.common {
@@ -318,7 +325,7 @@ func main() {
 			}
 			altA, found, _ := searchCache(cacheA, hashB)
 			if found {
-				if rowDelta, same = areEquals(altA, rowB, config.ignoredFields, modifiedFields, config.format); !same {
+				if rowDelta, same = areEquals(altA, rowB, config, modifiedFields); !same {
 					writer.MustWriteRow(rowDelta)
 					modifiedCount++
 				} else if config.common {
