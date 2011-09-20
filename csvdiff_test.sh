@@ -8,8 +8,14 @@ gzip -c testB.csv > testB.csv.gz
 
 ./csvdiff -k=1 testA.csv.gz testB.csv.gz
 
-rm testA.csv.gz
-rm testB.csv.gz
+rm testA.csv.gz testB.csv.gz
+
+echo
+echo "Test with pipe separator..."
+tr ',' '|' < testA.csv > testA.tsv
+tr ',' '|' < testB.csv > testB.tsv
+./csvdiff -s=\| -k=1 -f=1 testA.tsv testB.tsv
+rm testA.tsv testB.tsv
 
 echo
 echo "Test with ignored field..."
