@@ -117,18 +117,18 @@ func parseArgs() *Config {
 		symbol = '|'
 	}
 	return &Config{noHeader: *n, sep: (*sep)[0], guess: guess, quoted: *q,
-	keys: keys, ignoredFields: ignoredFields, format: *f, symbol: symbol, common: *c}
+		keys: keys, ignoredFields: ignoredFields, format: *f, symbol: symbol, common: *c}
 }
 
 func checkRow(rowA, rowB Row, config *Config) {
 	for _, key := range config.keys {
 		if int(key) >= len(rowA) || int(key) >= len(rowB) {
-		  log.Fatalf("Key index %d out of range\n", key + 1)
+			log.Fatalf("Key index %d out of range\n", key+1)
 		}
 	}
 	for field, _ := range config.ignoredFields {
 		if int(field) >= len(rowA) || int(field) >= len(rowB) {
-		  log.Fatalf("Ignored field %d out of range\n", field + 1)
+			log.Fatalf("Ignored field %d out of range\n", field+1)
 		}
 	}
 }
