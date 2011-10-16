@@ -126,8 +126,8 @@ func checkRow(rowA, rowB Row, config *Config) {
 			log.Fatalf("Key index %d out of range\n", key+1)
 		}
 	}
-	for field, _ := range config.ignoredFields {
-		if int(field) >= len(rowA) || int(field) >= len(rowB) {
+	for field := range config.ignoredFields {
+		if field >= len(rowA) || field >= len(rowB) {
 			log.Fatalf("Ignored field %d out of range\n", field+1)
 		}
 	}
