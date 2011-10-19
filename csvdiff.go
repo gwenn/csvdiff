@@ -228,7 +228,7 @@ func delta(row Row, sign byte) (rowDelta Row) {
 func searchCache(cache Cache, key RowHash) (row Row, found bool, hash RowHash) {
 	row, found = cache[key]
 	if found {
-		cache[key] = nil, false
+		delete(cache, key)
 		hash = key
 	}
 	return
