@@ -372,7 +372,7 @@ func readRow(r *yacr.Reader, pEof bool) (row Row, eof bool) {
 	}
 	result, e := r.ReadRow()
 	if e != nil {
-		if e != os.EOF {
+		if e != io.EOF {
 			log.Fatalf("Error while reading file: '%s'\n", e)
 		}
 		eof = true
