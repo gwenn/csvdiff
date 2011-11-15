@@ -7,14 +7,14 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"github.com/gwenn/yacr"
 	"hash"
 	"hash/fnv"
 	"io"
 	"log"
 	"os"
-	"strings"
 	"strconv"
-	"github.com/gwenn/yacr"
+	"strings"
 )
 
 type Keys []uint
