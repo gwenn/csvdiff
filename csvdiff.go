@@ -262,6 +262,9 @@ func main() {
 		}
 		if first {
 			checkRow(rowA, rowB, config)
+			if config.guess {
+				writer.Sep = readerA.Sep
+			}
 		}
 		totalCount++
 		if rowA != nil && rowB != nil {

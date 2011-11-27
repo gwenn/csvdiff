@@ -20,3 +20,10 @@ rm testA.tsv testB.tsv
 echo
 echo "Test with ignored field..."
 ./csvdiff -k=1 -i=2 testA.csv testB.csv
+
+echo
+echo "Test with guessed separator..."
+tr ',' ';' < testA.csv > testA.dsv
+tr ',' ';' < testB.csv > testB.dsv
+./csvdiff -k=1 testA.dsv testB.dsv
+rm testA.dsv testB.dsv
