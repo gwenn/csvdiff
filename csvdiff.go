@@ -264,6 +264,9 @@ func main() {
 			checkRow(rowA, rowB, config)
 			if config.guess {
 				writer.Sep = readerA.Sep
+				if writer.Sep == '|' {
+					config.symbol = '!'
+				}
 			}
 		}
 		totalCount++
