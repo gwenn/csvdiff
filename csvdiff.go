@@ -106,7 +106,7 @@ func parseArgs() *Config {
 	if *f == 0 {
 		fi, e := os.Stdout.Stat()
 		// Disable bold output when stdout is redirected to a file
-		if e == nil && fi.IsRegular() {
+		if e == nil && (fi.Mode()&os.ModeType == 0) {
 			*f = 1
 		}
 	}
