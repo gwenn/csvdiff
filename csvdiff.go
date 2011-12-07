@@ -17,7 +17,7 @@ import (
 	"strings"
 )
 
-type Keys []uint
+type Keys []uint64
 type Row [][]byte
 type Hasher hash.Hash64
 type RowHash uint64
@@ -42,11 +42,11 @@ type Delta struct {
 }
 */
 
-func atouis(s string) (values []uint) {
+func atouis(s string) (values []uint64) {
 	rawValues := strings.Split(s, ",")
-	values = make([]uint, len(rawValues))
+	values = make([]uint64, len(rawValues))
 	for i, v := range rawValues {
-		f, err := strconv.Atoui(v)
+		f, err := strconv.ParseUint(v, 10, 0)
 		if err != nil {
 			flag.Usage()
 			log.Fatalf("Invalid field index (%v)\n", v)
