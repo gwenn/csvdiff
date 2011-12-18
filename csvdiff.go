@@ -327,6 +327,9 @@ func main() {
 					writer.MustWriteRow(delta(rowA, '='))
 				}
 			} else {
+				if _, exist := cacheA[hashA]; exist {
+					fmt.Fprintf(os.Stderr, "Duplicate row/key in first input: %s\n", rowA)
+				}
 				cacheA[hashA] = deepCopy(rowA)
 			}
 			altA, found, _ := searchCache(cacheA, hashB)
@@ -338,6 +341,9 @@ func main() {
 					writer.MustWriteRow(delta(rowB, '='))
 				}
 			} else {
+				if _, exist := cacheB[hashB]; exist {
+					fmt.Fprintf(os.Stderr, "Duplicate row/key in second input: %s\n", rowB)
+				}
 				cacheB[hashB] = deepCopy(rowB)
 			}
 		}
