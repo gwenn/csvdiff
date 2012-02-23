@@ -402,7 +402,7 @@ func makeReader(filepath string, c *Config) *yacr.Reader {
 	return reader
 }
 func makeWriter(wr io.Writer, c *Config) *yacr.Writer {
-	writer := yacr.NewWriter(wr, c.sep, false /*TODO c.quoted */ )
+	writer := yacr.NewWriter(wr, c.sep, false /*TODO c.quoted */)
 	return writer
 }
 
