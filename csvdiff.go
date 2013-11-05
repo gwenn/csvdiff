@@ -28,11 +28,11 @@ type Config struct {
 	ignoredFields map[int]bool // TODO Set
 	noHeader      bool
 	sep           byte
-	guess         bool
-	quoted        bool
-	format        int
-	symbol        byte
-	common        bool
+	//	guess         bool
+	quoted bool
+	format int
+	symbol byte
+	common bool
 }
 
 /*
@@ -83,12 +83,12 @@ func parseArgs() *Config {
 		flag.Usage()
 		log.Fatalf("Separator must be only one character long\n")
 	}
-	guess := true
+	/*guess := true
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "s" {
 			guess = false
 		}
-	})
+	})*/
 
 	var keys Keys
 	if len(*k) > 0 {
@@ -116,7 +116,7 @@ func parseArgs() *Config {
 	} else {
 		symbol = '|'
 	}
-	return &Config{noHeader: *n, sep: (*sep)[0], guess: guess, quoted: *q,
+	return &Config{noHeader: *n, sep: (*sep)[0] /*, guess: guess*/, quoted: *q,
 		keys: keys, ignoredFields: ignoredFields, format: *f, symbol: symbol, common: *c}
 }
 
@@ -237,10 +237,10 @@ func searchCache(cache Cache, key RowHash) (row Row, found bool, hash RowHash) {
 func main() {
 	config := parseArgs()
 
-	readerA := makeReader(flag.Arg(0), config)
-	defer readerA.Close()
-	readerB := makeReader(flag.Arg(1), config)
-	defer readerB.Close()
+	readerA, inA := makeReader(flag.Arg(0), config)
+	defer inA.Close()
+	readerB, inB := makeReader(flag.Arg(1), config)
+	defer inB.Close()
 
 	cacheA := make(Cache)
 	cacheB := make(Cache)
@@ -248,6 +248,7 @@ func main() {
 	hasher := fnv.New64a()
 	writer := makeWriter(os.Stdout, config)
 
+	var bufferA, bufferB Row = make([][]byte, 0, 10), make([][]byte, 0, 10)
 	var rowA, rowB, headers, rowDelta Row
 	var hashA, hashB RowHash
 	var addedCount, modifiedCount, removedCount, totalCount uint
@@ -255,19 +256,19 @@ func main() {
 	var modifiedFields []bool
 	first := true
 	for !eofA || !eofB {
-		rowA, eofA = readRow(readerA, eofA)
-		rowB, eofB = readRow(readerB, eofB)
+		rowA, eofA = readRow(readerA, bufferA, eofA)
+		rowB, eofB = readRow(readerB, bufferB, eofB)
 		if rowA == nil && rowB == nil {
 			continue
 		}
 		if first {
 			checkRow(rowA, rowB, config)
-			if config.guess {
+			/*if config.guess {
 				writer.Sep = readerA.Sep
 				if writer.Sep == '|' {
 					config.symbol = '!'
 				}
-			}
+			}*/
 		}
 		totalCount++
 		if rowA != nil && rowB != nil {
@@ -282,12 +283,12 @@ func main() {
 		}
 
 		if rowA == nil {
-			writer.MustWriteRow(delta(rowB, '+'))
+			writeRow(writer, delta(rowB, '+'))
 			addedCount++
 			continue
 		}
 		if rowB == nil {
-			writer.MustWriteRow(delta(rowA, '-'))
+			writeRow(writer, delta(rowA, '-'))
 			removedCount++
 			continue
 		}
@@ -297,17 +298,17 @@ func main() {
 				if first { // FIXME, Headers may be different (hashA != hashB)...
 					first = false
 					if !config.noHeader {
-						writer.MustWriteRow(delta(rowA, '='))
+						writeRow(writer, delta(rowA, '='))
 						headers = deepCopy(rowA)
 					} else if config.common {
-						writer.MustWriteRow(delta(rowA, '='))
+						writeRow(writer, delta(rowA, '='))
 					}
 					modifiedFields = make([]bool, len(rowA))
 				} else if config.common {
-					writer.MustWriteRow(delta(rowA, '='))
+					writeRow(writer, delta(rowA, '='))
 				}
 			} else {
-				writer.MustWriteRow(rowDelta)
+				writeRow(writer, rowDelta)
 				modifiedCount++
 				if first {
 					first = false
@@ -321,10 +322,10 @@ func main() {
 			altB, found, _ := searchCache(cacheB, hashA)
 			if found {
 				if rowDelta, same = areEquals(rowA, altB, config, modifiedFields); !same {
-					writer.MustWriteRow(rowDelta)
+					writeRow(writer, rowDelta)
 					modifiedCount++
 				} else if config.common {
-					writer.MustWriteRow(delta(rowA, '='))
+					writeRow(writer, delta(rowA, '='))
 				}
 			} else {
 				if _, exist := cacheA[hashA]; exist {
@@ -335,10 +336,10 @@ func main() {
 			altA, found, _ := searchCache(cacheA, hashB)
 			if found {
 				if rowDelta, same = areEquals(altA, rowB, config, modifiedFields); !same {
-					writer.MustWriteRow(rowDelta)
+					writeRow(writer, rowDelta)
 					modifiedCount++
 				} else if config.common {
-					writer.MustWriteRow(delta(rowB, '='))
+					writeRow(writer, delta(rowB, '='))
 				}
 			} else {
 				if _, exist := cacheB[hashB]; exist {
@@ -349,14 +350,17 @@ func main() {
 		}
 	}
 	for _, rowA := range cacheA {
-		writer.MustWriteRow(delta(rowA, '-'))
+		writeRow(writer, delta(rowA, '-'))
 		removedCount++
 	}
 	for _, rowB := range cacheB {
-		writer.MustWriteRow(delta(rowB, '+'))
+		writeRow(writer, delta(rowB, '+'))
 		addedCount++
 	}
-	writer.MustFlush()
+	writer.Flush()
+	if err := writer.Err(); err != nil {
+		log.Fatalf("Error while flushing diff: '%s'\n", err)
+	}
 	if addedCount > 0 || removedCount > 0 || modifiedCount > 0 {
 		fmt.Fprintf(os.Stderr, "Total: %d, Removed: %d, Added: %d, Modified: %d\n",
 			totalCount, removedCount, addedCount, modifiedCount)
@@ -378,28 +382,48 @@ func main() {
 	}
 }
 
-func readRow(r *yacr.Reader, pEof bool) (row Row, eof bool) {
+func readRow(r *yacr.Reader, buffer Row, pEof bool) (Row, bool) {
 	if pEof {
 		return nil, pEof
 	}
-	result, e := r.ReadRow()
-	if e != nil {
-		if e != io.EOF {
-			log.Fatalf("Error while reading file: '%s'\n", e)
+	var eof bool
+	buffer = buffer[:0]
+	for {
+		if r.Scan() {
+			println(r.Text())
+			buffer = append(buffer, r.Bytes())
+			if r.EndOfRecord() {
+				break
+			}
+		} else {
+			eof = true
+			break
 		}
-		eof = true
 	}
-	row = result
-	return
+	if err := r.Err(); err != nil {
+		log.Fatalf("Error while reading file: '%s'\n", err)
+	}
+	return buffer, eof
 }
 
-func makeReader(filepath string, c *Config) *yacr.Reader {
-	reader, err := yacr.NewFileReader(filepath, c.sep, c.quoted)
+func writeRow(w *yacr.Writer, row Row) {
+	for _, field := range row {
+		w.Write(field)
+	}
+	w.EndOfRecord()
+	if err := w.Err(); err != nil {
+		log.Fatalf("Error while writing diff: '%s'\n", err)
+	}
+}
+
+func makeReader(filepath string, c *Config) (*yacr.Reader, io.ReadCloser) {
+	in, err := yacr.Zopen(filepath)
 	if err != nil {
 		log.Fatalf("Error while opening file: '%s' (%s)\n", filepath, err)
 	}
-	reader.Guess = c.guess
-	return reader
+	reader := yacr.NewReader(in, c.sep, c.quoted)
+	//reader.Guess = c.guess
+	return reader, in
 }
 func makeWriter(wr io.Writer, c *Config) *yacr.Writer {
 	writer := yacr.NewWriter(wr, c.sep, false /*TODO c.quoted */)
