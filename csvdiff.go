@@ -390,7 +390,6 @@ func readRow(r *yacr.Reader, buffer Row, pEof bool) (Row, bool) {
 	buffer = buffer[:0]
 	for {
 		if r.Scan() {
-			println(r.Text())
 			buffer = append(buffer, r.Bytes())
 			if r.EndOfRecord() {
 				break
@@ -402,6 +401,9 @@ func readRow(r *yacr.Reader, buffer Row, pEof bool) (Row, bool) {
 	}
 	if err := r.Err(); err != nil {
 		log.Fatalf("Error while reading file: '%s'\n", err)
+	}
+	if len(buffer) == 0 {
+		return nil, eof
 	}
 	return buffer, eof
 }
@@ -431,5 +433,10 @@ func makeWriter(wr io.Writer, c *Config) *yacr.Writer {
 }
 
 func deepCopy(row Row) Row {
-	return yacr.DeepCopy(row)
+	dup := make(Row, len(row))
+	for i := 0; i < len(row); i++ {
+		dup[i] = make([]byte, len(row[i]))
+		copy(dup[i], row[i])
+	}
+	return dup
 }
