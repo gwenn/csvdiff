@@ -28,11 +28,11 @@ type Config struct {
 	ignoredFields map[int]bool // TODO Set
 	noHeader      bool
 	sep           byte
-	//	guess         bool
-	quoted bool
-	format int
-	symbol byte
-	common bool
+	guess         bool
+	quoted        bool
+	format        int
+	symbol        byte
+	common        bool
 }
 
 /*
@@ -83,12 +83,12 @@ func parseArgs() *Config {
 		flag.Usage()
 		log.Fatalf("Separator must be only one character long\n")
 	}
-	/*guess := true
+	guess := true
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "s" {
 			guess = false
 		}
-	})*/
+	})
 
 	var keys Keys
 	if len(*k) > 0 {
@@ -116,7 +116,7 @@ func parseArgs() *Config {
 	} else {
 		symbol = '|'
 	}
-	return &Config{noHeader: *n, sep: (*sep)[0] /*, guess: guess*/, quoted: *q,
+	return &Config{noHeader: *n, sep: (*sep)[0], guess: guess, quoted: *q,
 		keys: keys, ignoredFields: ignoredFields, format: *f, symbol: symbol, common: *c}
 }
 
@@ -423,8 +423,7 @@ func makeReader(filepath string, c *Config) (*yacr.Reader, io.ReadCloser) {
 	if err != nil {
 		log.Fatalf("Error while opening file: '%s' (%s)\n", filepath, err)
 	}
-	reader := yacr.NewReader(in, c.sep, c.quoted)
-	//reader.Guess = c.guess
+	reader := yacr.NewReader(in, c.sep, c.quoted, c.guess)
 	return reader, in
 }
 func makeWriter(wr io.Writer, c *Config) *yacr.Writer {
