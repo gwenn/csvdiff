@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/gwenn/yacr"
 	"hash"
 	"hash/fnv"
 	"io"
@@ -15,16 +14,18 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/gwenn/yacr"
 )
 
-type Keys []uint64
-type Row [][]byte
-type Hasher hash.Hash64
-type RowHash uint64
-type Cache map[RowHash]Row
+type keys []uint64
+type row [][]byte
+type hasher hash.Hash64
+type rowHash uint64
+type cache map[rowHash]row
 
-type Config struct {
-	keys          Keys
+type config struct {
+	keys          keys
 	ignoredFields map[int]bool // TODO Set
 	noHeader      bool
 	sep           byte
@@ -57,14 +58,14 @@ func atouis(s string) (values []uint64) {
 }
 
 // TODO Add an option to ignore appended/new field(s).
-func parseArgs() *Config {
-	var n *bool = flag.Bool("n", false, "No header")
-	var f *int = flag.Int("f", 0, "Format used to display delta (0: ansi bold, 1: piped, 2: newline)")
-	var q *bool = flag.Bool("q", true, "Quoted field mode")
-	var sep *string = flag.String("s", ",", "Set the field separator")
-	var k *string = flag.String("k", "", "Set the key indexes (starts at 1)")
-	var i *string = flag.String("i", "", "Set the ignored field indexes (starts at 1)")
-	var c *bool = flag.Bool("c", false, "Output common/same lines")
+func parseArgs() *config {
+	var n = flag.Bool("n", false, "No header")
+	var f = flag.Int("f", 0, "Format used to display delta (0: ansi bold, 1: piped, 2: newline)")
+	var q = flag.Bool("q", true, "Quoted field mode")
+	var sep = flag.String("s", ",", "Set the field separator")
+	var k = flag.String("k", "", "Set the key indexes (starts at 1)")
+	var i = flag.String("i", "", "Set the ignored field indexes (starts at 1)")
+	var c = flag.Bool("c", false, "Output common/same lines")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [-n] [-q] [-c] [-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
 		flag.PrintDefaults()
@@ -90,7 +91,7 @@ func parseArgs() *Config {
 		}
 	})
 
-	var keys Keys
+	var keys keys
 	if len(*k) > 0 {
 		keys = atouis(*k)
 	} else {
@@ -116,11 +117,11 @@ func parseArgs() *Config {
 	} else {
 		symbol = '|'
 	}
-	return &Config{noHeader: *n, sep: (*sep)[0], guess: guess, quoted: *q,
+	return &config{noHeader: *n, sep: (*sep)[0], guess: guess, quoted: *q,
 		keys: keys, ignoredFields: ignoredFields, format: *f, symbol: symbol, common: *c}
 }
 
-func checkRow(rowA, rowB Row, config *Config) {
+func checkRow(rowA, rowB row, config *config) {
 	for _, key := range config.keys {
 		if int(key) >= len(rowA) || int(key) >= len(rowB) {
 			log.Fatalf("Key index %d out of range\n", key+1)
@@ -133,17 +134,17 @@ func checkRow(rowA, rowB Row, config *Config) {
 	}
 }
 
-func hashRow(hasher Hasher, row Row, keys Keys) RowHash {
+func hashRow(hasher hasher, row row, keys keys) rowHash {
 	hasher.Reset()
 	for _, i := range keys {
 		hasher.Write(row[i])
 	}
-	return RowHash(hasher.Sum64())
+	return rowHash(hasher.Sum64())
 }
 
 // May be introduce a Formatter
 // TODO precision
-func areEquals(rowA, rowB Row, config *Config, modifiedFields []bool) (rowDelta Row, same bool) {
+func areEquals(rowA, rowB row, config *config, modifiedFields []bool) (rowDelta row, same bool) {
 	same = true
 	var minLen, maxLen, longest int
 	if len(rowA) > len(rowB) {
@@ -160,7 +161,7 @@ func areEquals(rowA, rowB Row, config *Config, modifiedFields []bool) (rowDelta 
 		}
 	}
 	if !same {
-		rowDelta = make(Row, maxLen+1) // TODO Reuse/cache one array and slice it?
+		rowDelta = make(row, maxLen+1) // TODO Reuse/cache one array and slice it?
 		rowDelta[0] = []byte{'#'}
 	}
 	for i := 0; i < minLen; i++ {
@@ -168,7 +169,7 @@ func areEquals(rowA, rowB Row, config *Config, modifiedFields []bool) (rowDelta 
 		// TODO skip keys
 		if !ignored && !bytes.Equal(rowA[i], rowB[i]) {
 			if same {
-				rowDelta = make(Row, maxLen+1)
+				rowDelta = make(row, maxLen+1)
 				rowDelta[0] = []byte{'#'}
 				copy(rowDelta[1:], rowA[0:i])
 			}
@@ -218,14 +219,14 @@ func concat(valueA, valueB []byte, format int, symbol byte) []byte {
 	return buf
 }
 
-func delta(row Row, sign byte) (rowDelta Row) {
-	rowDelta = make(Row, len(row)+1) // TODO Reuse/cache one array and slice it?
+func delta(row row, sign byte) (rowDelta row) {
+	rowDelta = make(row, len(row)+1) // TODO Reuse/cache one array and slice it?
 	rowDelta[0] = []byte{sign}
 	copy(rowDelta[1:], row)
 	return
 }
 
-func searchCache(cache Cache, key RowHash) (row Row, found bool, hash RowHash) {
+func searchCache(cache cache, key rowHash) (row row, found bool, hash rowHash) {
 	row, found = cache[key]
 	if found {
 		delete(cache, key)
@@ -242,15 +243,15 @@ func main() {
 	readerB, inB := makeReader(flag.Arg(1), config)
 	defer inB.Close()
 
-	cacheA := make(Cache)
-	cacheB := make(Cache)
+	cacheA := make(cache)
+	cacheB := make(cache)
 
 	hasher := fnv.New64a()
 	writer := makeWriter(os.Stdout, config)
 
-	var bufferA, bufferB Row = make([][]byte, 0, 10), make([][]byte, 0, 10)
-	var rowA, rowB, headers, rowDelta Row
-	var hashA, hashB RowHash
+	var bufferA, bufferB row = make([][]byte, 0, 10), make([][]byte, 0, 10)
+	var rowA, rowB, headers, rowDelta row
+	var hashA, hashB rowHash
 	var addedCount, modifiedCount, removedCount, totalCount uint
 	var eofA, eofB, same bool
 	var modifiedFields []bool
@@ -382,7 +383,7 @@ func main() {
 	}
 }
 
-func readRow(r *yacr.Reader, buffer Row, pEof bool) (Row, bool) {
+func readRow(r *yacr.Reader, buffer row, pEof bool) (row, bool) {
 	if pEof {
 		return nil, pEof
 	}
@@ -408,7 +409,7 @@ func readRow(r *yacr.Reader, buffer Row, pEof bool) (Row, bool) {
 	return buffer, eof
 }
 
-func writeRow(w *yacr.Writer, row Row) {
+func writeRow(w *yacr.Writer, row row) {
 	for _, field := range row {
 		w.Write(field)
 	}
@@ -418,7 +419,7 @@ func writeRow(w *yacr.Writer, row Row) {
 	}
 }
 
-func makeReader(filepath string, c *Config) (*yacr.Reader, io.ReadCloser) {
+func makeReader(filepath string, c *config) (*yacr.Reader, io.ReadCloser) {
 	in, err := yacr.Zopen(filepath)
 	if err != nil {
 		log.Fatalf("Error while opening file: '%s' (%s)\n", filepath, err)
@@ -426,13 +427,13 @@ func makeReader(filepath string, c *Config) (*yacr.Reader, io.ReadCloser) {
 	reader := yacr.NewReader(in, c.sep, c.quoted, c.guess)
 	return reader, in
 }
-func makeWriter(wr io.Writer, c *Config) *yacr.Writer {
+func makeWriter(wr io.Writer, c *config) *yacr.Writer {
 	writer := yacr.NewWriter(wr, c.sep, false /*TODO c.quoted */)
 	return writer
 }
 
-func deepCopy(row Row) Row {
-	dup := make(Row, len(row))
+func deepCopy(row row) row {
+	dup := make(row, len(row))
 	for i := 0; i < len(row); i++ {
 		dup[i] = make([]byte, len(row[i]))
 		copy(dup[i], row[i])
