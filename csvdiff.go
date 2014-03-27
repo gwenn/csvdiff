@@ -134,10 +134,10 @@ func checkRow(rowA, rowB row, config *config) {
 	}
 }
 
-func hashRow(hasher hasher, row row, keys keys) rowHash {
+func hashRow(hasher hasher, r row, keys keys) rowHash {
 	hasher.Reset()
 	for _, i := range keys {
-		hasher.Write(row[i])
+		hasher.Write(r[i])
 	}
 	return rowHash(hasher.Sum64())
 }
@@ -219,15 +219,15 @@ func concat(valueA, valueB []byte, format int, symbol byte) []byte {
 	return buf
 }
 
-func delta(row row, sign byte) (rowDelta row) {
-	rowDelta = make(row, len(row)+1) // TODO Reuse/cache one array and slice it?
+func delta(r row, sign byte) (rowDelta row) {
+	rowDelta = make(row, len(r)+1) // TODO Reuse/cache one array and slice it?
 	rowDelta[0] = []byte{sign}
-	copy(rowDelta[1:], row)
+	copy(rowDelta[1:], r)
 	return
 }
 
-func searchCache(cache cache, key rowHash) (row row, found bool, hash rowHash) {
-	row, found = cache[key]
+func searchCache(cache cache, key rowHash) (r row, found bool, hash rowHash) {
+	r, found = cache[key]
 	if found {
 		delete(cache, key)
 		hash = key
@@ -409,8 +409,8 @@ func readRow(r *yacr.Reader, buffer row, pEof bool) (row, bool) {
 	return buffer, eof
 }
 
-func writeRow(w *yacr.Writer, row row) {
-	for _, field := range row {
+func writeRow(w *yacr.Writer, r row) {
+	for _, field := range r {
 		w.Write(field)
 	}
 	w.EndOfRecord()
@@ -432,11 +432,11 @@ func makeWriter(wr io.Writer, c *config) *yacr.Writer {
 	return writer
 }
 
-func deepCopy(row row) row {
-	dup := make(row, len(row))
-	for i := 0; i < len(row); i++ {
-		dup[i] = make([]byte, len(row[i]))
-		copy(dup[i], row[i])
+func deepCopy(r row) row {
+	dup := make(row, len(r))
+	for i := 0; i < len(r); i++ {
+		dup[i] = make([]byte, len(r[i]))
+		copy(dup[i], r[i])
 	}
 	return dup
 }
