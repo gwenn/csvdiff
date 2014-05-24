@@ -257,8 +257,8 @@ func main() {
 	var modifiedFields []bool
 	first := true
 	for !eofA || !eofB {
-		rowA, eofA = readRow(readerA, bufferA, eofA)
-		rowB, eofB = readRow(readerB, bufferB, eofB)
+		bufferA, rowA, eofA = readRow(readerA, bufferA, eofA)
+		bufferB, rowB, eofB = readRow(readerB, bufferB, eofB)
 		if rowA == nil && rowB == nil {
 			continue
 		}
@@ -383,15 +383,26 @@ func main() {
 	}
 }
 
-func readRow(r *yacr.Reader, buffer row, pEof bool) (row, bool) {
+func readRow(r *yacr.Reader, buffer row, pEof bool) (row, row, bool) {
 	if pEof {
-		return nil, pEof
+		return buffer, nil, pEof
 	}
 	var eof bool
+	var v, cv []byte
+	orig := buffer
+	i := 0
 	buffer = buffer[:0]
 	for {
 		if r.Scan() {
-			buffer = append(buffer, r.Bytes())
+			v = r.Bytes() // must be copied
+			if i < len(orig) {
+				cv = orig[i]
+				cv = append(cv[:0], v...)
+			} else {
+				cv = make([]byte, len(v))
+				copy(cv, v)
+			}
+			buffer = append(buffer, cv)
 			if r.EndOfRecord() {
 				break
 			}
@@ -399,14 +410,15 @@ func readRow(r *yacr.Reader, buffer row, pEof bool) (row, bool) {
 			eof = true
 			break
 		}
+		i++
 	}
 	if err := r.Err(); err != nil {
 		log.Fatalf("Error while reading file: '%s'\n", err)
 	}
 	if len(buffer) == 0 {
-		return nil, eof
+		return buffer, nil, eof
 	}
-	return buffer, eof
+	return buffer, buffer, eof
 }
 
 func writeRow(w *yacr.Writer, r row) {
