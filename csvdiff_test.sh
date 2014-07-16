@@ -27,3 +27,7 @@ tr ',' ';' < testA.csv > testA.dsv
 tr ',' ';' < testB.csv > testB.dsv
 go run csvdiff.go -k=1 testA.dsv testB.dsv
 rm testA.dsv testB.dsv
+
+echo
+echo "Test with no key specified..."
+go run csvdiff.go -k=* testA.csv testB.csv

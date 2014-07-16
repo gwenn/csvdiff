@@ -18,7 +18,7 @@ import (
 	"github.com/gwenn/yacr"
 )
 
-type keys []uint64
+type keys []int
 type row [][]byte
 type hasher hash.Hash64
 type rowHash uint64
@@ -43,16 +43,16 @@ type Delta struct {
 }
 */
 
-func atouis(s string) (values []uint64) {
+func atouis(s string) (values []int) {
 	rawValues := strings.Split(s, ",")
-	values = make([]uint64, len(rawValues))
+	values = make([]int, len(rawValues))
 	for i, v := range rawValues {
-		f, err := strconv.ParseUint(v, 10, 0)
-		if err != nil {
+		f, err := strconv.ParseInt(v, 10, 0)
+		if err != nil || f < 1 {
 			flag.Usage()
 			log.Fatalf("Invalid field index (%v)\n", v)
 		}
-		values[i] = f - 1
+		values[i] = int(f) - 1
 	}
 	return
 }
@@ -63,7 +63,7 @@ func parseArgs() *config {
 	var f = flag.Int("f", 0, "Format used to display delta (0: ansi bold, 1: piped, 2: newline)")
 	var q = flag.Bool("q", true, "Quoted field mode")
 	var sep = flag.String("s", ",", "Set the field separator")
-	var k = flag.String("k", "", "Set the key indexes (starts at 1)")
+	var k = flag.String("k", "", "Set the key indexes (starts at 1). '*' means all columns are part of the key")
 	var i = flag.String("i", "", "Set the ignored field indexes (starts at 1)")
 	var c = flag.Bool("c", false, "Output common/same lines")
 	flag.Usage = func() {
@@ -93,7 +93,9 @@ func parseArgs() *config {
 
 	var keys keys
 	if len(*k) > 0 {
-		keys = atouis(*k)
+		if "*" != *k {
+			keys = atouis(*k)
+		}
 	} else {
 		flag.Usage()
 		log.Fatalf("Missing Key argument(s)\n")
@@ -122,6 +124,18 @@ func parseArgs() *config {
 }
 
 func checkRow(rowA, rowB row, config *config) {
+	if len(config.keys) == 0 { // when no key is specified, take all columns...
+		var n int
+		if len(rowA) < len(rowB) {
+			n = len(rowA)
+		} else {
+			n = len(rowB)
+		}
+		config.keys = make([]int, n)
+		for i := range config.keys {
+			config.keys[i] = i
+		}
+	}
 	for _, key := range config.keys {
 		if int(key) >= len(rowA) || int(key) >= len(rowB) {
 			log.Fatalf("Key index %d out of range\n", key+1)
