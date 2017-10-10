@@ -34,6 +34,7 @@ type config struct {
 	format        int
 	symbol        byte
 	common        bool
+	noTrailer     bool
 }
 
 /*
@@ -66,8 +67,10 @@ func parseArgs() *config {
 	var k = flag.String("k", "", "Set the key indexes (starts at 1). '*' means all columns are part of the key")
 	var i = flag.String("i", "", "Set the ignored field indexes (starts at 1)")
 	var c = flag.Bool("c", false, "Output common/same lines")
+	var t = flag.Bool("t", false, "No trailer")
+
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [-n] [-q] [-c] [-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [-n] [-t] [-q] [-c] [-s=C] [-i=N,...] -k=N[,...] FILEA FILEB\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -120,7 +123,7 @@ func parseArgs() *config {
 		symbol = '|'
 	}
 	return &config{noHeader: *n, sep: (*sep)[0], guess: guess, quoted: *q,
-		keys: keys, ignoredFields: ignoredFields, format: *f, symbol: symbol, common: *c}
+		keys: keys, ignoredFields: ignoredFields, format: *f, symbol: symbol, common: *c, noTrailer: *t}
 }
 
 func checkRow(rowA, rowB row, config *config) {
@@ -222,6 +225,7 @@ func concat(valueA, valueB []byte, format int, symbol byte) []byte {
 	case 2:
 		return bytes.Join([][]byte{valueA, valueB}, []byte{'\n'})
 	}
+
 	buf := []byte{}
 	buf = append(buf, '\x1b', '[', '1', 'm')
 	buf = append(buf, valueA...)
@@ -377,21 +381,23 @@ func main() {
 		log.Fatalf("Error while flushing diff: '%s'\n", err)
 	}
 	if addedCount > 0 || removedCount > 0 || modifiedCount > 0 {
-		fmt.Fprintf(os.Stderr, "Total: %d, Removed: %d, Added: %d, Modified: %d\n",
-			totalCount, removedCount, addedCount, modifiedCount)
-		if modifiedCount > 0 {
-			fmt.Fprintf(os.Stderr, "Modified fields: ")
-			modified := []string{}
-			for i, b := range modifiedFields {
-				if b {
-					if headers != nil {
-						modified = append(modified, fmt.Sprintf("%s (%d)", headers[i], i+1))
-					} else {
-						modified = append(modified, fmt.Sprintf("%d", i+1))
+		if !config.noTrailer {
+			fmt.Fprintf(os.Stderr, "Total: %d, Removed: %d, Added: %d, Modified: %d\n",
+				totalCount, removedCount, addedCount, modifiedCount)
+			if modifiedCount > 0 {
+				fmt.Fprintf(os.Stderr, "Modified fields: ")
+				modified := []string{}
+				for i, b := range modifiedFields {
+					if b {
+						if headers != nil {
+							modified = append(modified, fmt.Sprintf("%s (%d)", headers[i], i+1))
+						} else {
+							modified = append(modified, fmt.Sprintf("%d", i+1))
+						}
 					}
 				}
+				fmt.Fprintf(os.Stderr, "%s\n", strings.Join(modified, ", "))
 			}
-			fmt.Fprintf(os.Stderr, "%s\n", strings.Join(modified, ", "))
 		}
 		os.Exit(1)
 	}
