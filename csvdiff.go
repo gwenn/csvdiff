@@ -61,7 +61,7 @@ func atouis(s string) (values []int) {
 // TODO Add an option to ignore appended/new field(s).
 func parseArgs() *config {
 	var n = flag.Bool("n", false, "No header")
-	var f = flag.Int("f", 0, "Format used to display delta (0: ansi bold, 1: piped, 2: newline, 3: none)")
+	var f = flag.Int("f", 0, "Format used to display delta (0: ansi bold, 1: piped, 2: newline)")
 	var q = flag.Bool("q", true, "Quoted field mode")
 	var sep = flag.String("s", ",", "Set the field separator")
 	var k = flag.String("k", "", "Set the key indexes (starts at 1). '*' means all columns are part of the key")
