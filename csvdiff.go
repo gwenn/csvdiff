@@ -224,9 +224,6 @@ func concat(valueA, valueB []byte, format int, symbol byte) []byte {
 		return bytes.Join([][]byte{valueA, valueB}, []byte{symbol, '-', symbol})
 	case 2:
 		return bytes.Join([][]byte{valueA, valueB}, []byte{'\n'})
-	case 3:
-		return bytes.Join([][]byte{valueA, valueB}, []byte{symbol})
-
 	}
 
 	buf := []byte{}
