@@ -301,12 +301,12 @@ func main() {
 			rowA, _, hashA = searchCache(cacheA, hashB)
 		}
 
-		if rowA == nil {
+		if rowA == nil { // no more row in A (and no matching row in cacheA)
 			writeRow(writer, delta(rowB, '+'))
 			addedCount++
 			continue
 		}
-		if rowB == nil {
+		if rowB == nil { // no more row in B (and no matching row in cacheB)
 			writeRow(writer, delta(rowA, '-'))
 			removedCount++
 			continue
